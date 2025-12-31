@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kuen/clean-arch-sample/internal/domain"
+	"clean-arch-sample/internal/domain"
 )
 
 type MySQLUserRepository struct {

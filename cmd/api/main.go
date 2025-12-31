@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"os"
 
-	httpHandler "github.com/kuen/clean-arch-sample/internal/delivery/http"
-	"github.com/kuen/clean-arch-sample/internal/infrastructure/database"
-	"github.com/kuen/clean-arch-sample/internal/presenter"
-	"github.com/kuen/clean-arch-sample/internal/usecase"
+	httpHandler "clean-arch-sample/internal/delivery/http"
+	"clean-arch-sample/internal/infrastructure/database"
+	"clean-arch-sample/internal/presenter"
+	"clean-arch-sample/internal/usecase"
 )
 
 func main() {

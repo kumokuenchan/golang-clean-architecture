@@ -3,7 +3,7 @@ package presenter
 import (
 	"encoding/json"
 
-	"github.com/kuen/clean-arch-sample/internal/domain"
+	"clean-arch-sample/internal/domain"
 )
 
 type UserOutputData struct {

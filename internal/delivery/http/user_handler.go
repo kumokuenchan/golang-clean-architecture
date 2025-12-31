@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/kuen/clean-arch-sample/internal/usecase"
+	"clean-arch-sample/internal/usecase"
 )
 
 type UserHandler struct {

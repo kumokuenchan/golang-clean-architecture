@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/kuen/clean-arch-sample/internal/usecase"
+	"clean-arch-sample/internal/usecase"
 )
 
 type Router struct {

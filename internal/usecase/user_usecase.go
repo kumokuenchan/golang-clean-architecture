@@ -3,8 +3,8 @@ package usecase
 import (
 	"time"
 
-	"github.com/kuen/clean-arch-sample/internal/domain"
-	"github.com/kuen/clean-arch-sample/internal/presenter"
+	"clean-arch-sample/internal/domain"
+	"clean-arch-sample/internal/presenter"
 )
 
 type UserUsecase struct {

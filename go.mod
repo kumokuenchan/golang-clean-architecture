@@ -1,4 +1,4 @@
-module github.com/kuen/clean-arch-sample
+module clean-arch-sample
 
 go 1.21
 
