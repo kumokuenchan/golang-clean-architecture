@@ -9,6 +9,7 @@ import (
 	httpHandler "clean-arch-sample/internal/delivery/http"
 	"clean-arch-sample/internal/infrastructure/database"
 	"clean-arch-sample/internal/presenter"
+	"clean-arch-sample/internal/usecase"
 )
 
 func main() {
@@ -26,8 +27,9 @@ func main() {
 
 	userRepo := database.NewMySQLUserRepository(db)
 	userPresenter := presenter.NewHTTPUserPresenter()
+	userUsecase := usecase.NewUserUsecase(userRepo, userPresenter)
 
-	apiServer := api.NewServer(userRepo, userPresenter)
+	apiServer := api.NewServer(userUsecase)
 	router := httpHandler.NewRouter(apiServer)
 	mux := router.SetupRoutes()
 

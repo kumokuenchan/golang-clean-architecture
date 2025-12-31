@@ -5,10 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"clean-arch-sample/internal/domain"
 	"clean-arch-sample/internal/dto"
-	"clean-arch-sample/internal/mapper"
-	"clean-arch-sample/internal/presenter"
+	"clean-arch-sample/internal/usecase"
 )
 
 // ServerInterface defines the interface for the API server
@@ -22,180 +20,135 @@ type ServerInterface interface {
 
 // Server implements the ServerInterface
 type Server struct {
-	userRepo   domain.UserRepository
-	presenter  presenter.UserPresenter
+	userUsecase *usecase.UserUsecase
 }
 
 // NewServer creates a new API server
-func NewServer(userRepo domain.UserRepository, presenter presenter.UserPresenter) *Server {
+func NewServer(userUsecase *usecase.UserUsecase) *Server {
 	return &Server{
-		userRepo:  userRepo,
-		presenter: presenter,
+		userUsecase: userUsecase,
 	}
+}
+
+// writeJSONResponse writes a JSON response with proper headers
+func (s *Server) writeJSONResponse(w http.ResponseWriter, statusCode int, data []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	w.Write(data)
+}
+
+// writeErrorResponse writes an error response
+func (s *Server) writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(dto.MessageResponse{Message: message})
+}
+
+// extractAndValidateID extracts and validates ID from query parameters
+func (s *Server) extractAndValidateID(r *http.Request) (int, error) {
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		return 0, ErrIDRequired
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return 0, ErrInvalidID
+	}
+
+	return id, nil
+}
+
+// decodeJSONBody decodes JSON request body
+func (s *Server) decodeJSONBody(r *http.Request, target interface{}) error {
+	return json.NewDecoder(r.Body).Decode(target)
 }
 
 // CreateUser handles the POST /users endpoint
 func (s *Server) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
+	if err := s.decodeJSONBody(r, &req); err != nil {
+		s.writeErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if req.Name == "" || req.Email == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: "name and email are required"})
+	data, err := s.userUsecase.CreateUser(req.Name, req.Email)
+	if err != nil {
+		s.writeErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Use copier mapper to map request to domain
-	domainUser := mapper.MapCreateRequestToDomain(&req)
-
-	if err := s.userRepo.Create(domainUser); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
-		return
-	}
-
-	data, _ := s.presenter.PresentUser(domainUser)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	w.Write(data)
+	s.writeJSONResponse(w, http.StatusCreated, data)
 }
 
 // GetUser handles the GET /user endpoint
 func (s *Server) GetUser(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	if idStr == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: "ID is required"})
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
+	id, err := s.extractAndValidateID(r)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Invalid ID"})
+		statusCode := http.StatusBadRequest
+		if err == ErrInvalidID {
+			statusCode = http.StatusBadRequest
+		}
+		s.writeErrorResponse(w, statusCode, err.Error())
 		return
 	}
 
-	user, err := s.userRepo.GetByID(id)
+	data, err := s.userUsecase.GetUser(id)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
+		s.writeErrorResponse(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	data, _ := s.presenter.PresentUser(user)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	s.writeJSONResponse(w, http.StatusOK, data)
 }
 
 // GetAllUsers handles the GET /users endpoint
 func (s *Server) GetAllUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.userRepo.GetAll()
+	data, err := s.userUsecase.GetAllUsers()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
+		s.writeErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	data, _ := s.presenter.PresentUsers(users)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	s.writeJSONResponse(w, http.StatusOK, data)
 }
 
 // UpdateUser handles the PUT /user endpoint
 func (s *Server) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	if idStr == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: "ID is required"})
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
+	id, err := s.extractAndValidateID(r)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Invalid ID"})
+		s.writeErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	var req dto.UpdateUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
+	if err := s.decodeJSONBody(r, &req); err != nil {
+		s.writeErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	user, err := s.userRepo.GetByID(id)
+	data, err := s.userUsecase.UpdateUser(id, req.Name, req.Email)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
+		s.writeErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Use copier mapper to map update request to domain
-	domainUser := mapper.MapUpdateRequestToDomain(&req, user)
-
-	if err := s.userRepo.Update(domainUser); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
-		return
-	}
-
-	data, _ := s.presenter.PresentUser(domainUser)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	s.writeJSONResponse(w, http.StatusOK, data)
 }
 
 // DeleteUser handles the DELETE /user endpoint
 func (s *Server) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	if idStr == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: "ID is required"})
-		return
-	}
-
-	id, err := strconv.Atoi(idStr)
+	id, err := s.extractAndValidateID(r)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Invalid ID"})
+		s.writeErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	_, err = s.userRepo.GetByID(id)
+	data, err := s.userUsecase.DeleteUser(id)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
+		s.writeErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	if err := s.userRepo.Delete(id); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
-		return
-	}
-
-	data, _ := s.presenter.PresentSuccess("user deleted successfully")
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	s.writeJSONResponse(w, http.StatusOK, data)
 }
