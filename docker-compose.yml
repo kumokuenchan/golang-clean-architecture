@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: clean-arch-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: cleanarch_sample
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: apppassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - clean-arch-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Go Application
+  api:
+    build: .
+    container_name: clean-arch-api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: appuser
+      DB_PASSWORD: apppassword
+      DB_NAME: cleanarch_sample
+      PORT: 8080
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - clean-arch-network
+
+volumes:
+  mysql_data:
+
+networks:
+  clean-arch-network:
+    driver: bridge
