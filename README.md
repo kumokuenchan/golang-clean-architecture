@@ -1,6 +1,6 @@
 # Clean Architecture Go CRUD Sample
 
-A complete implementation of Clean Architecture principles in Go for CRUD operations. This project demonstrates how to structure a Go application following Robert C. Martin's Clean Architecture pattern.
+A complete implementation of Clean Architecture principles in Go for CRUD operations. This project demonstrates how to structure a Go application following Robert C. Martin's Clean Architecture pattern with modern tooling including OpenAPI specification, Docker containerization, and jinzhu/copier for object mapping.
 
 ## 🏗️ Architecture Overview
 
@@ -32,18 +32,28 @@ Clean Architecture organizes code into concentric layers, with the business rule
 ├── internal/
 │   ├── domain/
 │   │   └── user.go              # Entities and repository interfaces
-│   ├── usecase/
-│   │   └── user_usecase.go      # Business logic and application rules
+│   ├── dto/
+│   │   └── user_dto.go          # Data transfer objects (requests/responses)
+│   ├── mapper/
+│   │   └── user_mapper.go       # Object mapping using jinzhu/copier
 │   ├── presenter/
 │   │   └── user_presenter.go    # Data formatting and presentation
+│   ├── api/
+│   │   └── server.go            # HTTP API server implementation
 │   ├── infrastructure/
 │   │   └── database/
 │   │       ├── connection.go    # Database connection management
 │   │       └── user_repository.go # Repository implementation
 │   └── delivery/
 │       └── http/
-│           ├── user_handler.go  # HTTP request handlers
 │           └── router.go        # Route configuration
+├── docker/
+│   └── mysql/
+│       └── init.sql             # Database initialization script
+├── Dockerfile                   # Multi-stage Docker build configuration
+├── docker-compose.yml           # Container orchestration
+├── oapi.yaml                    # OpenAPI 3.0 specification
+├── oapi-codegen.yaml            # Code generation configuration
 ├── schema.sql                   # Database schema
 ├── go.mod                       # Go module file
 └── README.md                    # This file
@@ -75,45 +85,55 @@ type UserRepository interface {
 }
 ```
 
-### 2. Use Case Layer (Application Business Rules)
-- **Purpose**: Implements application-specific business rules
-- **Contains**: Use cases, application services
-- **Dependencies**: Domain layer only
-- **Example**: `internal/usecase/user_usecase.go`
+### 2. DTO Layer (Data Transfer Objects)
+- **Purpose**: Defines request/response structures for API layer
+- **Contains**: Request/response types, validation tags
+- **Dependencies**: None
+- **Example**: `internal/dto/user_dto.go`
 
 ```go
-type UserUsecase struct {
-    userRepo  domain.UserRepository
-    presenter presenter.UserPresenter
+type CreateUserRequest struct {
+    Name  string `json:"name" example:"John Doe"`
+    Email string `json:"email" example:"john@example.com"`
 }
 
-func (u *UserUsecase) CreateUser(name, email string) ([]byte, error) {
-    // Business logic validation
-    if name == "" || email == "" {
-        return u.presenter.PresentError("name and email are required")
-    }
-    
-    // Entity creation
-    user := &domain.User{
-        Name:      name,
-        Email:     email,
-        CreatedAt: time.Now(),
-        UpdatedAt: time.Now(),
-    }
-    
-    // Repository interaction
-    if err := u.userRepo.Create(user); err != nil {
-        return u.presenter.PresentError(err.Error())
-    }
-    
-    return u.presenter.PresentUser(user)
+type UserResponse struct {
+    ID        int    `json:"id" example:"1"`
+    Name      string `json:"name" example:"John Doe"`
+    Email     string `json:"email" example:"john@example.com"`
+    CreatedAt string `json:"created_at" example:"2023-01-01 12:00:00"`
+    UpdatedAt string `json:"updated_at" example:"2023-01-01 12:00:00"`
 }
 ```
 
-### 3. Presenter Layer (Interface Adapter)
+### 3. Mapper Layer (Object Mapping)
+- **Purpose**: Handles object transformation between layers using jinzhu/copier
+- **Contains**: Mapping functions, data transformation logic
+- **Dependencies**: Domain and DTO layers
+- **Example**: `internal/mapper/user_mapper.go`
+
+```go
+func MapCreateRequestToDomain(req *dto.CreateUserRequest) *domain.User {
+    user := &domain.User{}
+    copier.Copy(user, req)
+    user.CreatedAt = time.Now()
+    user.UpdatedAt = time.Now()
+    return user
+}
+
+func MapDomainToResponse(user *domain.User) *dto.UserResponse {
+    response := &dto.UserResponse{}
+    copier.Copy(response, user)
+    response.CreatedAt = user.CreatedAt.Format("2006-01-02 15:04:05")
+    response.UpdatedAt = user.UpdatedAt.Format("2006-01-02 15:04:05")
+    return response
+}
+```
+
+### 4. Presenter Layer (Interface Adapter)
 - **Purpose**: Formats data for presentation and converts between layers
 - **Contains**: Presenters, formatters
-- **Dependencies**: Domain layer
+- **Dependencies**: Domain and DTO layers
 - **Example**: `internal/presenter/user_presenter.go`
 
 ```go
@@ -124,18 +144,43 @@ type UserPresenter interface {
 }
 
 func (p *HTTPUserPresenter) PresentUser(user *domain.User) ([]byte, error) {
-    output := UserOutputData{
-        ID:        user.ID,
-        Name:      user.Name,
-        Email:     user.Email,
-        CreatedAt: user.CreatedAt.Format("2006-01-02 15:04:05"),
-        UpdatedAt: user.UpdatedAt.Format("2006-01-02 15:04:05"),
-    }
-    return json.Marshal(output)
+    response := mapper.MapDomainToResponse(user)
+    return json.Marshal(response)
 }
 ```
 
-### 4. Infrastructure Layer (Interface Adapter)
+### 5. API Layer (Application Business Rules)
+- **Purpose**: Implements HTTP handlers and business logic
+- **Contains**: HTTP handlers, business rules, validation
+- **Dependencies**: Domain, DTO, Mapper, and Presenter layers
+- **Example**: `internal/api/server.go`
+
+```go
+func (s *Server) CreateUser(w http.ResponseWriter, r *http.Request) {
+    var req dto.CreateUserRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        w.WriteHeader(http.StatusBadRequest)
+        json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
+        return
+    }
+    
+    // Use copier mapper to map request to domain
+    domainUser := mapper.MapCreateRequestToDomain(&req)
+    
+    if err := s.userRepo.Create(domainUser); err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(dto.MessageResponse{Message: err.Error()})
+        return
+    }
+    
+    data, _ := s.presenter.PresentUser(domainUser)
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
+    w.Write(data)
+}
+```
+
+### 6. Infrastructure Layer (Interface Adapter)
 - **Purpose**: Implements technical details and external interfaces
 - **Contains**: Database repositories, external API clients
 - **Dependencies**: Domain layer (implements interfaces)
@@ -163,30 +208,28 @@ func (r *MySQLUserRepository) Create(user *domain.User) error {
 }
 ```
 
-### 5. Delivery Layer (Interface Adapter)
+### 7. Delivery Layer (Interface Adapter)
 - **Purpose**: Handles external requests and coordinates the application
-- **Contains**: HTTP handlers, controllers, routers
-- **Dependencies**: Use case layer
-- **Example**: `internal/delivery/http/user_handler.go`
+- **Contains**: HTTP routers, middleware
+- **Dependencies**: API layer
+- **Example**: `internal/delivery/http/router.go`
 
 ```go
-func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
-    var req CreateUserRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        http.Error(w, err.Error(), http.StatusBadRequest)
-        return
-    }
+func (r *Router) SetupRoutes() *http.ServeMux {
+    mux := http.NewServeMux()
     
-    // Delegate to use case
-    data, err := h.userUsecase.CreateUser(req.Name, req.Email)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
+    mux.HandleFunc("/users", func(w http.ResponseWriter, req *http.Request) {
+        switch req.Method {
+        case http.MethodGet:
+            r.server.GetAllUsers(w, req)
+        case http.MethodPost:
+            r.server.CreateUser(w, req)
+        default:
+            http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        }
+    })
     
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusCreated)
-    w.Write(data)
+    return mux
 }
 ```
 
@@ -286,6 +329,52 @@ docker-compose exec api ./main
 
 # Access MySQL in container
 docker-compose exec mysql mysql -u appuser -p cleanarch_sample
+```
+
+## 🔄 Object Mapping with jinzhu/copier
+
+This project uses **jinzhu/copier** for automatic object mapping between layers:
+
+### Key Features
+- **Automatic field copying**: No manual assignment needed
+- **Type safety**: Compile-time checking of field mappings
+- **Performance optimized**: Efficient reflection-based copying
+- **Flexible mapping**: Handles nested structures and custom transformations
+
+### Mapping Examples
+```go
+// Request to Domain
+req := &dto.CreateUserRequest{Name: "John", Email: "john@example.com"}
+domainUser := mapper.MapCreateRequestToDomain(req)
+
+// Domain to Response
+response := mapper.MapDomainToResponse(domainUser)
+
+// List mapping
+usersResponse := mapper.MapDomainListToResponse(domainUsers)
+```
+
+## 📋 OpenAPI Specification
+
+The API is defined using OpenAPI 3.0 specification in `oapi.yaml`:
+
+### Features
+- **Complete API documentation**: All endpoints documented with examples
+- **Type definitions**: Request/response schemas with validation
+- **Code generation ready**: Configured for oapi-codegen tool
+- **Standard compliance**: Follows OpenAPI 3.0 standards
+
+### Key Endpoints
+- `POST /users` - Create new user
+- `GET /users` - List all users  
+- `GET /user?id={id}` - Get user by ID
+- `PUT /user?id={id}` - Update user
+- `DELETE /user?id={id}` - Delete user
+
+### Code Generation
+```bash
+# Generate Go code from OpenAPI spec
+oapi-codegen -config oapi-codegen.yaml oapi.yaml
 ```
 
 ### Option 2: Local Development
@@ -426,6 +515,9 @@ go test ./internal/delivery/...
 - **HTTP**: Web framework (standard library)
 - **Docker**: Containerization
 - **Docker Compose**: Multi-container orchestration
+- **jinzhu/copier**: Automatic object mapping between structs
+- **OpenAPI 3.0**: API specification and documentation
+- **oapi-codegen**: Code generation from OpenAPI specs
 
 ## 🐳 Docker Configuration
 
@@ -473,6 +565,8 @@ docker-compose down -v --rmi all
 2. **Dependency Inversion**: High-level modules don't depend on low-level modules
 3. **Separation of Concerns**: Each layer handles specific concerns
 4. **Testability**: All components can be tested in isolation
+5. **Specification-First Development**: API defined in OpenAPI before implementation
+6. **Automated Object Mapping**: Uses copier to reduce boilerplate and errors
 
 ## 🤝 Contributing
 
