@@ -1,4 +1,4 @@
-package api
+package dto
 
 // CreateUserRequest defines the request body for creating a user
 type CreateUserRequest struct {
