@@ -444,7 +444,7 @@ oapi-codegen -config oapi-codegen.yaml oapi.yaml
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd clean-arch-sample
+cd golang-clean-architecture
 ```
 
 2. Install dependencies:
