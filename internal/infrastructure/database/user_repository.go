@@ -17,6 +17,14 @@ func NewMySQLUserRepository(db *sql.DB) *MySQLUserRepository {
 }
 
 func (r *MySQLUserRepository) Create(user *domain.User) error {
+	now := time.Now()
+	if user.CreatedAt.IsZero() {
+		user.CreatedAt = now
+	}
+	if user.UpdatedAt.IsZero() {
+		user.UpdatedAt = now
+	}
+	
 	query := "INSERT INTO users (name, email, created_at, updated_at) VALUES (?, ?, ?, ?)"
 	result, err := r.db.Exec(query, user.Name, user.Email, user.CreatedAt, user.UpdatedAt)
 	if err != nil {

@@ -20,11 +20,11 @@ type ServerInterface interface {
 
 // Server implements the ServerInterface
 type Server struct {
-	userUsecase *usecase.UserUsecase
+	userUsecase usecase.UserUsecaseInterface
 }
 
 // NewServer creates a new API server
-func NewServer(userUsecase *usecase.UserUsecase) *Server {
+func NewServer(userUsecase usecase.UserUsecaseInterface) *Server {
 	return &Server{
 		userUsecase: userUsecase,
 	}
@@ -53,6 +53,10 @@ func (s *Server) extractAndValidateID(r *http.Request) (int, error) {
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		return 0, ErrInvalidID
+	}
+
+	if id <= 0 {
 		return 0, ErrInvalidID
 	}
 

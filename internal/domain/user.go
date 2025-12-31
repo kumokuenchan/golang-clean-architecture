@@ -1,6 +1,11 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var ErrUserNotFound = errors.New("user not found")
 
 type User struct {
 	ID        int       `json:"id"`

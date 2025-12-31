@@ -19,7 +19,13 @@ func MapCreateRequestToDomain(req *dto.CreateUserRequest) *domain.User {
 
 // MapUpdateRequestToDomain maps UpdateUserRequest to domain User
 func MapUpdateRequestToDomain(req *dto.UpdateUserRequest, existingUser *domain.User) *domain.User {
-	copier.Copy(existingUser, req)
+	// Only update fields that are not empty
+	if req.Name != "" {
+		existingUser.Name = req.Name
+	}
+	if req.Email != "" {
+		existingUser.Email = req.Email
+	}
 	existingUser.UpdatedAt = time.Now()
 	return existingUser
 }
@@ -35,7 +41,9 @@ func MapDomainToResponse(user *domain.User) *dto.UserResponse {
 
 // MapDomainListToResponse maps domain User slice to UsersResponse
 func MapDomainListToResponse(users []*domain.User) *dto.UsersResponse {
-	response := &dto.UsersResponse{}
+	response := &dto.UsersResponse{
+		Users: make([]dto.UserResponse, 0),
+	}
 	for _, user := range users {
 		response.Users = append(response.Users, *MapDomainToResponse(user))
 	}

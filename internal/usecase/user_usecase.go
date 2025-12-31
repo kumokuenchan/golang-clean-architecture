@@ -7,6 +7,15 @@ import (
 	"clean-arch-sample/internal/presenter"
 )
 
+// UserUsecaseInterface defines the interface for user use case operations
+type UserUsecaseInterface interface {
+	CreateUser(name, email string) ([]byte, error)
+	GetUser(id int) ([]byte, error)
+	GetAllUsers() ([]byte, error)
+	UpdateUser(id int, name, email string) ([]byte, error)
+	DeleteUser(id int) ([]byte, error)
+}
+
 type UserUsecase struct {
 	userRepo  domain.UserRepository
 	presenter presenter.UserPresenter
