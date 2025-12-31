@@ -3,16 +3,16 @@ package http
 import (
 	"net/http"
 
-	"clean-arch-sample/internal/usecase"
+	"clean-arch-sample/internal/api"
 )
 
 type Router struct {
-	userHandler *UserHandler
+	server api.ServerInterface
 }
 
-func NewRouter(userUsecase *usecase.UserUsecase) *Router {
+func NewRouter(server api.ServerInterface) *Router {
 	return &Router{
-		userHandler: NewUserHandler(userUsecase),
+		server: server,
 	}
 }
 
@@ -22,9 +22,9 @@ func (r *Router) SetupRoutes() *http.ServeMux {
 	mux.HandleFunc("/users", func(w http.ResponseWriter, req *http.Request) {
 		switch req.Method {
 		case http.MethodGet:
-			r.userHandler.GetAllUsers(w, req)
+			r.server.GetAllUsers(w, req)
 		case http.MethodPost:
-			r.userHandler.CreateUser(w, req)
+			r.server.CreateUser(w, req)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -33,11 +33,11 @@ func (r *Router) SetupRoutes() *http.ServeMux {
 	mux.HandleFunc("/user", func(w http.ResponseWriter, req *http.Request) {
 		switch req.Method {
 		case http.MethodGet:
-			r.userHandler.GetUser(w, req)
+			r.server.GetUser(w, req)
 		case http.MethodPut:
-			r.userHandler.UpdateUser(w, req)
+			r.server.UpdateUser(w, req)
 		case http.MethodDelete:
-			r.userHandler.DeleteUser(w, req)
+			r.server.DeleteUser(w, req)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"clean-arch-sample/internal/api"
 	httpHandler "clean-arch-sample/internal/delivery/http"
 	"clean-arch-sample/internal/infrastructure/database"
 	"clean-arch-sample/internal/presenter"
@@ -28,7 +29,8 @@ func main() {
 	userPresenter := presenter.NewHTTPUserPresenter()
 	userUsecase := usecase.NewUserUsecase(userRepo, userPresenter)
 
-	router := httpHandler.NewRouter(userUsecase)
+	apiServer := api.NewServer(userUsecase)
+	router := httpHandler.NewRouter(apiServer)
 	mux := router.SetupRoutes()
 
 	port := getEnv("PORT", "8080")
